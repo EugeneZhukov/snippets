@@ -21,3 +21,11 @@ This project was designed as a news portal.
 UserController was develop to work with users in the admin panel of the project.
 With the help of this controller, it was possible to view users, add delete edit and also change the role of users.
 
+# strReverse.php
+
+simple example of reverse the string using php
+
+
+# strReverse.html
+
+simple example of reverse the string using Vue.js

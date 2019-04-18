@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <style>
+        *{
+            margin: 0;
+            padding: 0;
+            outline: none;
+            border: none;
+            box-sizing: border-box;
+        }
+        body{
+            background: #34495E;
+        }
+        .wrapper{
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin: 10rem auto;
+            color: #fff;
+        }
+        .wrapper p{
+            font-size: 2em;
+        }
+        .wrapper input{
+            font-size: 1em;
+            padding: 5px 10px;
+            margin-top: 10px;
+            border-radius: 2px;
+        }
+        .wrapper button{
+            background: #3498db;
+            color: #fff;
+            text-transform: uppercase;
+            font-size: 1em;
+            letter-spacing: 0.2em;
+            margin-top: 10px;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+        .wrapper button:hover{
+            background: #2980b9;
+        }
+
+    </style>
+</head>
+<body>
+<div id="app" class="wrapper">
+    <p>{{message}}</p>
+    <input type="text" placeholder="Enter some text" v-model="message">
+    <button v-on:click="reverseMessage">Reverse message</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js"></script>
+<script>
+    var app = new Vue({
+        el:'#app',
+        data: {
+            message: ''
+        },
+        methods:{
+            reverseMessage: function () {
+                this.message = this.message.split('').reverse().join('')
+            }
+        }
+    });
+</script>
+</body>
+</html>
