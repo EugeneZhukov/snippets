@@ -2,28 +2,50 @@
 
 namespace BKontor\GatewayBundle\ActionHandler\Internal;
 
-use Kontor\GatewayBundle\ActionHandler\AbstractActionHandler;
-use BKontor\BaseBundle\Entity\PaymentProcessor;
 use BKontor\BaseBundle\Entity\Currency;
 use BKontor\BaseBundle\Entity\SkrillDeposit;
+use BKontor\BaseBundle\Entity\PaymentProcessor;
+use Kontor\GatewayBundle\ActionHandler\AbstractActionHandler;
 
 
 class StartSkrillHandler extends AbstractActionHandler
 {
-    /** @var \Doctrine\ORM\EntityManager */
+    /** @var $em \Doctrine\ORM\EntityManager */
     protected $em;
 
-    /** @var \BKontor\BaseBundle\Entity\Currency */
+    /** @var $currency \BKontor\BaseBundle\Entity\Currency */
     protected $currency;
 
     /** @var $logger LoggerInterface */
     protected $logger;
 
+    /** @var $valConvService ValueConversionService */
+    protected $valConvService;
+
     public function validate()
     {
-        $this->em = $this->container->get('doctrine.orm.entity_manager');
+        $this->em     = $this->container->get('doctrine.orm.entity_manager');
         $this->logger = $this->getContainer()->get('logger');
 
+        /** @var $licenseService \BKontor\BaseBundle\Service\LicenseService */
+        $licenseService       = $this->getContainer()->get('bkontor.license');
+        $fxService            = $this->container->get('bkontor.fx');
+        $this->valConvService = $this->container->get('bkontor.value_conversion');
+        $limitBalancesService = $this->container->get('draglet.limit_balances');
+
+        $limitBalancesService->setUser($this->user);
+
+        $totalBalances      = $limitBalancesService->calculateLimitBalances("total", 'limitFD');
+        $userBalances       = $limitBalancesService->calculateLimitBalances("user", 'limitFD');
+        $currenciesBalances = $limitBalancesService->calculateLimitBalances("currency", 'limitFD');
+
+        $this->logger->info('limit send funds', array(
+            '$totalBalancies' => $totalBalances,
+            '$userBalancies' => $userBalances,
+            '$currenciesBalancies' => $currenciesBalances
+        ));
+
+        $this->currency  = $this->em->getRepository('BKontorBaseBundle:Currency')->find($this->getOption('currency'));
         $skrillProcessor = $this->em->getRepository('BKontorBaseBundle:PaymentProcessor')->findOneBy([
             'name' => 'skrill '
         ]);
@@ -40,16 +62,11 @@ class StartSkrillHandler extends AbstractActionHandler
             return false;
         }
 
-        /** @var $licenseService \BKontor\BaseBundle\Service\LicenseService */
-        $licenseService = $this->getContainer()->get('bkontor.license');
-
         if(PaymentProcessor::PRODUCTION == $skrillProcessor->getState() && !$licenseService->hasOption('skrill')){
             $this->addError('SKRILL_PRODUCTION_UNLICENSED');
 
             return false;
         }
-
-        $this->currency = $this->em->getRepository('BKontorBaseBundle:Currency')->find($this->getOption('currency'));
 
         if(!$this->currency instanceof Currency || !$this->getLicenseService()->isCurrencyLicensed($this->currency)){
             $this->addError('CURRENCY_UNKNOWN');
@@ -67,40 +84,20 @@ class StartSkrillHandler extends AbstractActionHandler
             array('user' => $this->getUser()->getId(), 'currency' => $this->getOption('currency'))
         );
 
-        /**
-         * Is the requested withdrawal amount above the minimum setting?
-         * @var $valConvService ValueConversionService
-         * */
-        $valConvService = $this->container->get('bkontor.value_conversion');
-        $limitBalancesService = $this->container->get('draglet.limit_balances');
-        $fxService = $this->container->get('bkontor.fx');
-
-        $limitBalancesService->setUser($this->user);
-
-        $totalBalances = $limitBalancesService->calculateLimitBalances("total", 'limitFD');
-        $userBalances = $limitBalancesService->calculateLimitBalances("user", 'limitFD');
-        $currenciesBalances = $limitBalancesService->calculateLimitBalances("currency", 'limitFD');
-
-        $this->logger->info('limit send funds', array(
-            '$totalBalancies' => $totalBalances,
-            '$userBalancies' => $userBalances,
-            '$currenciesBalancies' => $currenciesBalances
-        ));
-
         if ($totalBalances){
             foreach ($totalBalances as $balance){
                 $this->logger->info('total balance', array(
-                    'type' => $balance[0],
-                    'time' => $balance[1],
-                    'period' => $balance[2],
+                    'type'         => $balance[0],
+                    'time'         => $balance[1],
+                    'period'       => $balance[2],
                     'currencyType' => $balance[3],
-                    'currencyID' => $balance[4],
-                    'balance' => $balance[5],
-                    'limit' => $balance[6],
+                    'currencyID'   => $balance[4],
+                    'balance'      => $balance[5],
+                    'limit'        => $balance[6],
                 ));
 
                 $limitCurrency = $this->em->getRepository('BKontorBaseBundle:Currency')->find($balance[4]);
-                $convertedAmount = $fxService->convertValue($this->currency, $limitCurrency, $valConvService->toInternal($this->getOption('amount')));
+                $convertedAmount = $fxService->convertValue($this->currency, $limitCurrency, $this->valConvService->toInternal($this->getOption('amount')));
 
                 if (($balance[5] - $convertedAmount) < 0){
                     $this->addError('DEPOSIT_LIMIT', ['total limit' => $balance[6], 'balance' => $balance[5], 'request amount' => $this->getOption('amount')]);
@@ -113,17 +110,17 @@ class StartSkrillHandler extends AbstractActionHandler
         if ($userBalances){
             foreach ($userBalances as $balance){
                 $this->logger->info('user balance', array(
-                    'type' => $balance[0],
-                    'time' => $balance[1],
-                    'period' => $balance[2],
+                    'type'         => $balance[0],
+                    'time'         => $balance[1],
+                    'period'       => $balance[2],
                     'currencyType' => $balance[3],
-                    'currencyID' => $balance[4],
-                    'balance' => $balance[5],
-                    'limit' => $balance[6],
+                    'currencyID'   => $balance[4],
+                    'balance'      => $balance[5],
+                    'limit'        => $balance[6],
                 ));
 
-                $limitCurrency = $this->em->getRepository('BKontorBaseBundle:Currency')->find($balance[4]);
-                $convertedAmount = $fxService->convertValue($this->currency, $limitCurrency, $valConvService->toInternal($this->getOption('amount')));
+                $limitCurrency   = $this->em->getRepository('BKontorBaseBundle:Currency')->find($balance[4]);
+                $convertedAmount = $fxService->convertValue($this->currency, $limitCurrency, $this->valConvService->toInternal($this->getOption('amount')));
 
                 if (($balance[5] - $convertedAmount) < 0){
                     $this->addError('DEPOSIT_LIMIT', ['user limit' => $balance[6], 'balance' => $balance[5], 'request amount' => $this->getOption('amount')]);
@@ -136,17 +133,17 @@ class StartSkrillHandler extends AbstractActionHandler
         if ($currenciesBalances){
             foreach ($currenciesBalances as $balance){
                 $this->logger->info('currency balance', array(
-                    'type' => $balance[0],
-                    'time' => $balance[1],
-                    'period' => $balance[2],
+                    'type'         => $balance[0],
+                    'time'         => $balance[1],
+                    'period'       => $balance[2],
                     'currencyType' => $balance[3],
-                    'currencyID' => $balance[4],
-                    'balance' => $balance[5],
-                    'limit' => $balance[6],
+                    'currencyID'   => $balance[4],
+                    'balance'      => $balance[5],
+                    'limit'        => $balance[6],
                 ));
 
-                $limitCurrency = $this->em->getRepository('BKontorBaseBundle:Currency')->find($balance[4]);
-                $convertedAmount = $fxService->convertValue($this->currency, $limitCurrency, $valConvService->toInternal($this->getOption('amount')));
+                $limitCurrency   = $this->em->getRepository('BKontorBaseBundle:Currency')->find($balance[4]);
+                $convertedAmount = $fxService->convertValue($this->currency, $limitCurrency, $this->valConvService->toInternal($this->getOption('amount')));
 
                 if (($balance[5] - $convertedAmount) < 0){
                     $this->addError('DEPOSIT_LIMIT', ['currency limit' => $balance[6], 'balance' => $balance[5], 'request amount' => $this->getOption('amount')]);
@@ -169,31 +166,27 @@ class StartSkrillHandler extends AbstractActionHandler
     public function handle()
     {
         /** @var $encrypter \BKontor\BaseBundle\Service\EncrypterService */
-        $encrypter = $this->container->get('bkontor.encrypter');
-        $valConvServ         = $this->getContainer()->get('bkontor.value_conversion');
-        $amount              = $this->getOption('amount');
-        $locale              = $this->getOption('locale');
-        $ppSettingsService   = $this->getContainer()->get('bkontor.payment_processor_settings');
-        $payURL              = $ppSettingsService->getValue('skrill', 'PayURL');
-        $payToEmail          = $ppSettingsService->getValue('skrill', 'PayToEmail'.$this->getOption('currency'));
+        $encrypter          = $this->container->get('bkontor.encrypter');
+        $user               = $this->getUser();
+        $amount             = $this->getOption('amount');
+        $locale             = $this->getOption('locale');
+        $ppSettingsService  = $this->getContainer()->get('bkontor.payment_processor_settings');
+        $payURL             = $ppSettingsService->getValue('skrill', 'PayURL');
+        $payToEmail         = $ppSettingsService->getValue('skrill', 'PayToEmail'.$this->getOption('currency'));
+        $depositReturnURL   = $ppSettingsService->getValue('skrill', 'DepositReturnURL');
+        $depositStatusURL   = $ppSettingsService->getValue('skrill', 'DepositStatusURL');
 
-        if($payToEmail == null){
-            $payToEmail      = $ppSettingsService->getValue('skrill', 'PayToEmail');
+        if($payToEmail === null){
+            $payToEmail = $ppSettingsService->getValue('skrill', 'PayToEmail');
             $this->logger->info(sprintf('PayToEmail used "%u" ', $payToEmail));
         }
-
-        $depositReturnURL    = $ppSettingsService->getValue('skrill', 'DepositReturnURL');
-        $depositStatusURL    = $ppSettingsService->getValue('skrill', 'DepositStatusURL');
-
-        $this->currency = $this->em->getRepository('BKontorBaseBundle:Currency')->find($this->getOption('currency'));
-        $user = $this->getUser();
 
         try{
             /** @var $skrillDeposit \BKontor\BaseBundle\Entity\SkrillDeposit  */
             $skrillDeposit = new SkrillDeposit;
             $skrillDeposit
                 ->setUser($this->getUser())
-                ->setAmount($valConvServ->toInternal($amount))
+                ->setAmount($this->valConvService->toInternal($amount))
                 ->setCurrency($this->currency)
                 ->setConfirmed(false)
             ;
@@ -239,6 +232,5 @@ class StartSkrillHandler extends AbstractActionHandler
                 "errorMessage" => $ex->getMessage()
             ]);
         }
-
     }
 }

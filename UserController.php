@@ -2,27 +2,26 @@
 
 namespace App\Http\Controllers\Api\v1;
 
-use Illuminate\Http\Request;
-use App\Http\Requests;
-use App\Http\Controllers\Controller;
-use Illuminate\Support\Str;
-use Illuminate\Auth\AuthManager;
-use Bican\Roles\Models\Role;
-use Bican\Roles\Models\Permission;
-use App\Models\User;
-use App\Models\Store;
-use App\Models\Notification;
-use App\Services\CommonService;
+use DB;
 use Auth;
+use Hash;
+use Mail;
 use Input;
 use Validator;
-use Hash;
-use DB;
-use Mail;
+use App\Models\User;
+use App\Models\Store;
+use App\Http\Requests;
+use Illuminate\Support\Str;
+use Illuminate\Http\Request;
+use Bican\Roles\Models\Role;
+use App\Models\Notification;
+use App\Services\CommonService;
+use Illuminate\Auth\AuthManager;
+use Bican\Roles\Models\Permission;
+use App\Http\Controllers\Controller;
 
 class UserController extends Controller
 {
-
 
     /**
      *
@@ -52,7 +51,7 @@ class UserController extends Controller
      *       - Loads the User
      *
      *   Params:
-     *       - $userid:      The UserID to Lookup (Default: NULL)
+     *       - userid:      The UserID to Lookup (Default: NULL)
      *
      *   Returns (JSON):
      *       1. The User Looked up (If $userid was passed)
@@ -74,7 +73,7 @@ class UserController extends Controller
      *       - Loads All of the Users
      *
      *   URL Params:
-     *        - limit:     The Page Limit (Default: 15)
+     *       - limit:     The Page Limit (Default: 15)
      *       - page:      Pages to Load (Default: null)
      *
      *
@@ -86,19 +85,18 @@ class UserController extends Controller
     public function getAllUsers($limit = 15, $page = null)
     {
 
-        if ($page) {
-
-            return [
-                'total' => User::count(),
-                'data' => User::take($limit)->skip((($page - 1) * $limit))->get()
-            ];
-
-        } else {
+        if (!$page) {
 
             return User::all(['id', 'firstname', 'lastname']);
 
-        }
+        } else {
 
+            return [
+                'total' => User::count(),
+                'data'  => User::take($limit)->skip((($page - 1) * $limit))->get()
+            ];
+
+        }
 
     }
 
@@ -120,9 +118,9 @@ class UserController extends Controller
     public function findUser()
     {
 
-        $email = Input::get('email', null);
+        $email    = Input::get('email', null);
         $username = Input::get('username', null);
-        $userid = Input::get('userid', null);
+        $userID   = Input::get('userid', null);
 
         if ($email || $username) {
 
@@ -132,7 +130,7 @@ class UserController extends Controller
 
             if ($username) $query->where('username', '=', $username);
 
-            if ($userid) $query->where('id', '!=', $userid);
+            if ($userID) $query->where('id', '!=', $userID);
 
             return $query->first();
 
@@ -149,17 +147,17 @@ class UserController extends Controller
      *       - Loads the User Roles
      *
      *   Params:
-     *       - $userid:      The UserID to Lookup (Default: NULL)
+     *       - $userID:      The UserID to Lookup (Default: NULL)
      *
      *   Returns (JSON):
      *       1. Returns all of the Users Assigned Roels
      *
      **/
-    public function getRoles($userid = null)
+    public function getRoles($userID = null)
     {
 
         //Return the Roles
-        return User::find(($userid ? $userid : Auth::user()->id))->roles()->get();
+        return User::find(($userID ? $userID : Auth::user()->id))->roles()->get();
 
     }
 
@@ -170,17 +168,17 @@ class UserController extends Controller
      *       - Loads the User Stores
      *
      *   Params:
-     *       - $userid:      The UserID to Lookup (Default: NULL)
+     *       - $userID:      The UserID to Lookup (Default: NULL)
      *
      *   Returns (JSON):
      *       1. Returns all of the Users Assigned Roels
      *
      **/
-    public function getStores($userid = null)
+    public function getStores($userID = null)
     {
 
         //Return the Stores
-        return User::find(($userid ? $userid : Auth::user()->id))->stores()->get();
+        return User::find(($userID ? $userID : Auth::user()->id))->stores()->get();
 
     }
 
@@ -191,17 +189,17 @@ class UserController extends Controller
      *       - Loads the User Roles
      *
      *   Params:
-     *       - $userid:      The UserID to Lookup (Default: NULL)
+     *       - $userID:      The UserID to Lookup (Default: NULL)
      *
      *   Returns (JSON):
      *       1. Returns all of the Users Assigned Roels
      *
      **/
-    public function getPermissions($userid = null)
+    public function getPermissions($userID = null)
     {
 
         //Return the Permissions
-        return User::find(($userid ? $userid : Auth::user()->id))->getPermissions();
+        return User::find(($userID ? $userID : Auth::user()->id))->getPermissions();
 
     }
 
@@ -212,17 +210,17 @@ class UserController extends Controller
      *       - Loads the User's Custom Permissions (Not Associated to the Role)
      *
      *   Params:
-     *       - $userid:      The UserID to Lookup (Default: NULL)
+     *       - $userID:      The UserID to Lookup (Default: NULL)
      *
      *   Returns (JSON):
      *       1. Returns all of the Users Assigned Roels
      *
      **/
-    public function getCustomPermissions($userid = null)
+    public function getCustomPermissions($userID = null)
     {
 
         //Return the Permissions
-        return User::find(($userid ? $userid : Auth::user()->id))->userPermissions()->get();
+        return User::find(($userID ? $userID : Auth::user()->id))->userPermissions()->get();
 
     }
 
@@ -251,14 +249,14 @@ class UserController extends Controller
     public function addUser()
     {
 
-        $data = Input::all();
+        $data      = Input::all();
         $validator = Validator::make($data, [
             'firstname' => 'required',
-            'lastname' => 'required',
-            'dob' => 'date',
-            'username' => 'unique:users,username|min:3|max:50',
-            'email' => 'required|unique:users,email',
-            'password' => 'confirmed|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z]).*$/'
+            'lastname'  => 'required',
+            'dob'       => 'date',
+            'username'  => 'unique:users,username|min:3|max:50',
+            'email'     => 'required|unique:users,email',
+            'password'  => 'confirmed|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z]).*$/'
         ]);
 
         if ($validator->fails()) {
@@ -274,7 +272,7 @@ class UserController extends Controller
                 //Create the User
                 $user = User::create(array_merge($data, [
                     'password' => Hash::make($data['password']),
-                    'slug' => Str::slug($data['firstname'] . ' ' . $data['lastname'] . ' ' . $data['username']),
+                    'slug'     => Str::slug($data['firstname'] . ' ' . $data['lastname'] . ' ' . $data['username']),
                     'username' => (!empty($data['username']) ? $data['username'] : null)
                 ]));
 
@@ -309,22 +307,20 @@ class UserController extends Controller
 
                 }
 
-
                 //Send the Notification
                 $user->notifications()->create([
 
-                    'icon' => 'user',
-                    'type' => 'New User',
+                    'icon'    => 'user',
+                    'type'    => 'New User',
                     'details' => $user->firstname . ' ' . $user->lastname,
-                    'url' => '/admin/users/edit/' . $user->id
+                    'url'     => '/admin/users/edit/' . $user->id
 
                 ])->send([
 
                     'permissions' => [Permission::where('slug', 'users.edit')->first()->id],
-                    'exclude' => [$user->id]
+                    'exclude'     => [$user->id]
 
                 ]);
-
 
                 //Add the Search Criteria
                 $user->search([
@@ -345,7 +341,6 @@ class UserController extends Controller
 
                 ]);
 
-
                 /**
                  * Get all users including administrators
                  */
@@ -363,7 +358,6 @@ class UserController extends Controller
                     $message->subject('Welcome to ' . env('COMPANY'));
 
                 });
-
 
                 //Return Success
                 return ['result' => 1];
@@ -386,7 +380,7 @@ class UserController extends Controller
      *       - Update an Existing User
      *
      *   Params (URL):
-     *       - userid:                   (String) The User ID
+     *       - userID:                   (String) The User ID
      *
      *   Params ($_POST):
      *       - firstname:                (String) The User Firstname
@@ -404,29 +398,30 @@ class UserController extends Controller
      *       Returns the User data or null
      *
      **/
-    public function editUser($userid)
+    public function editUser($userID)
     {
 
         $data = array_merge([
-            'id' => (int)$userid,
+            'id'        => (int)$userID,
             'firstname' => '',
-            'lastname' => '',
-            'username' => '',
-            'password' => '',
-            'city' => '',
-            'province' => '',
-            'phone' => '',
-            'roles' => [],
-            'stores' => []
+            'lastname'  => '',
+            'username'  => '',
+            'password'  => '',
+            'city'      => '',
+            'province'  => '',
+            'phone'     => '',
+            'roles'     => [],
+            'stores'    => []
         ], Input::all());
+
         $validator = Validator::make($data, [
-            'id' => 'required|integer|exists:users',
+            'id'        => 'required|integer|exists:users',
             'firstname' => 'required',
-            'lastname' => 'required',
-            'dob' => 'date',
-            'username' => 'min:3|max:50',
-            'email' => 'required|unique:users,email,' . (int)$userid,
-            'password' => 'confirmed|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z]).*$/'
+            'lastname'  => 'required',
+            'dob'       => 'date',
+            'username'  => 'min:3|max:50',
+            'email'     => 'required|unique:users,email,' . (int)$userID,
+            'password'  => 'confirmed|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z]).*$/'
         ]);
 
         if ($validator->fails()) {
@@ -437,7 +432,7 @@ class UserController extends Controller
         } else {
 
             //Get the User
-            $user = User::find($userid);
+            $user = User::find($userID);
 
             try {
 
@@ -449,16 +444,16 @@ class UserController extends Controller
                 }
 
                 $user->firstname = $data['firstname'];
-                $user->lastname = $data['lastname'];
-                $user->dob = $data['dob'];
-                $user->username = (!empty($data['username']) ? $data['username'] : null);
-                $user->slug = Str::slug($data['firstname'] . ' ' . $data['lastname'] . ' ' . $data['username']);
-                $user->email = $data['email'];
-                $user->city = $data['city'];
-                $user->province = $data['province'];
-                $user->phone = $data['phone'];
-                $user->save();
+                $user->lastname  = $data['lastname'];
+                $user->dob       = $data['dob'];
+                $user->username  = (!empty($data['username']) ? $data['username'] : null);
+                $user->slug      = Str::slug($data['firstname'] . ' ' . $data['lastname'] . ' ' . $data['username']);
+                $user->email     = $data['email'];
+                $user->city      = $data['city'];
+                $user->province  = $data['province'];
+                $user->phone     = $data['phone'];
 
+                $user->save();
 
                 //Setup the Roles
                 $user->detachAllRoles();
@@ -468,7 +463,6 @@ class UserController extends Controller
                     $user->attachRole(Role::find($data['roles']));
 
                 }
-
 
                 //Setup the Permissions
                 $user->detachAllPermissions();
@@ -500,21 +494,19 @@ class UserController extends Controller
 
                 }
 
-
                 //Send the Notification
                 $user->notifications()->create([
 
-                    'icon' => 'user',
-                    'type' => 'User Updated',
+                    'icon'    => 'user',
+                    'type'    => 'User Updated',
                     'details' => $user->firstname . ' ' . $user->lastname,
-                    'url' => '/admin/users/edit/' . $user->id
+                    'url'     => '/admin/users/edit/' . $user->id
 
                 ])->send([
 
                     'permissions' => [Permission::where('slug', 'users.edit')->first()->id]
 
                 ]);
-
 
                 //Update the Search Criteria
                 $user->search([
@@ -552,16 +544,16 @@ class UserController extends Controller
      *       - Delete an Existing User
      *
      *   Params (URL):
-     *       - userid:                   (String) The User ID
+     *       - userID:                   (String) The User ID
      *
      *   Returns (JSON):
      *       1. (Bool) Returns True / False
      *
      **/
-    public function deleteUser($userid)
+    public function deleteUser($userID)
     {
 
-        if ($user = User::find($userid)) {
+        if ($user = User::find($userID)) {
 
             //Delete the Search
             $user->search()->delete();
@@ -572,10 +564,10 @@ class UserController extends Controller
             //Send the Notification
             $user->notifications()->create([
 
-                'icon' => 'user',
-                'type' => 'User Deleted',
+                'icon'    => 'user',
+                'type'    => 'User Deleted',
                 'details' => $user->firstname . ' ' . $user->lastname,
-                'url' => null
+                'url'     => null
 
             ])->send([
 
