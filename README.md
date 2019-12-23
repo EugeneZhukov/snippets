@@ -29,3 +29,18 @@ simple example of reverse the string using php
 # strReverse.html
 
 simple example of reverse the string using Vue.js
+
+
+## CityController.php and City.php
+
+The project was created to booking test drives (both paid and free), before purchasing a car.
+
+CityController.php and City.php was designed to indicate in which city the test drive is taking place, in which city the dealer is located and many other entities.
+
+
+```bash
+ "symfony/symfony": "3.4.*",
+```
+```bash
+ "php": "<=7.3.4",
+```
